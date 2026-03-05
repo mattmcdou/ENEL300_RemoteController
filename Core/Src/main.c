@@ -21,12 +21,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define CONFIGURE_HC05 0   // 1 = AT mode, 0 = Data mode
+#define CONFIGURE_HC05 0  // 1 = AT mode, 0 = Data mode
 
 /* USER CODE END PTD */
 
@@ -41,6 +42,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -51,6 +53,7 @@ UART_HandleTypeDef huart2;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -60,20 +63,60 @@ static void MX_USART2_UART_Init(void);
 
 void configureHC05(){
 	char resp[50] = {0};
+	printf("\r\n--- Testing HC-05 Connection ---\r\n");
+
+	    // 1. Send AT
+	    HAL_UART_Transmit(&huart1, (uint8_t*)"AT\r\n", 4, 1000);
+
+	    // 2. Receive exactly 4 bytes (OK\r\n)
+	    HAL_StatusTypeDef status = HAL_UART_Receive(&huart1, (uint8_t*)resp, 4, 1000);
+
+	    if (status == HAL_OK) {
+	        printf("HC-05 says: %s\r\n", resp);
+	        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET); // LED ON
+	    } else if (status == HAL_TIMEOUT) {
+	        printf("ERROR: Timeout - No response from module\r\n");
+	    } else {
+	        printf("ERROR: UART Error Code %d\r\n", status);
+	    }
 
 
 	// set controller as "master"
-	char cmd2[] = "AT+ROLE=1\r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*)cmd2, strlen(cmd2), HAL_MAX_DELAY);
-	HAL_UART_Receive(&huart2, (uint8_t*)resp, 4, HAL_MAX_DELAY);
+	char cmd1[] = "AT+ROLE=1\r\n";
+	HAL_UART_Transmit(&huart1, (uint8_t*)cmd1, strlen(cmd1), HAL_MAX_DELAY);
+	HAL_UART_Receive(&huart1, (uint8_t*)resp, 4, 200);
+	printf("Role Response: %s\r\n", resp); // Print the "OK"
+	HAL_Delay(500);
+	memset(resp, 0, sizeof(resp));
+
+	char cmd_pw[] = "AT+PSWD=\"1234\"\r\n";
+	HAL_UART_Transmit(&huart1, (uint8_t*)cmd_pw, strlen(cmd_pw), HAL_MAX_DELAY);
+	HAL_UART_Receive(&huart1, (uint8_t*)resp, sizeof(resp), 200);
+	printf("Password Response: %s\r\n", resp);
+	HAL_Delay(500);
+	memset(resp, 0, sizeof(resp));
+
+#if 0
+	char cmd2[] = "AT+BIND=2025,08,004A3B\r\n";
+	HAL_UART_Transmit(&huart1, (uint8_t*)cmd2, strlen(cmd2), HAL_MAX_DELAY);
+	HAL_UART_Receive(&huart1, (uint8_t*)resp, sizeof(resp), 200);
+	HAL_Delay(500);
+#endif
+	char cmd3[] = "AT+CMODE=1\r\n";
+	HAL_UART_Transmit(&huart1, (uint8_t*)cmd3, strlen(cmd3), HAL_MAX_DELAY);
+	HAL_UART_Receive(&huart1, (uint8_t*)resp, sizeof(resp), 200);
+	printf("CMode Response: %s\r\n", resp); // Print the "OK"
+
 	HAL_Delay(500);
 
+	memset(resp, 0, sizeof(resp));
 
 	// set data mode baud rate = 9600
 	char cmd4[] = "AT+UART=9600,0,0\r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*)cmd4, strlen(cmd4), HAL_MAX_DELAY);
-	HAL_UART_Receive(&huart2, (uint8_t*)resp, 10, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, (uint8_t*)cmd4, strlen(cmd4), HAL_MAX_DELAY);
+	HAL_UART_Receive(&huart1, (uint8_t*)resp, sizeof(resp), 200);
 	HAL_Delay(500);
+
 
 
 
@@ -110,6 +153,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -121,11 +165,16 @@ int main(void)
 
 
 	# if CONFIGURE_HC05
-		configureHC05();
+	  HAL_GPIO_WritePin(HC05_EN_GPIO_Port, HC05_EN_Pin, GPIO_PIN_SET);  // set EN HIGH
+	  configureHC05();
 
 		// important: after running this ONCE, change CONFIGURE_HC05 to 0 and also the baud rate to 9600.
-		while (1){} // stop execution so normal controller code doesn't run
+	  while (1){} // stop execution so normal controller code doesn't run
 	#endif
+
+	  uint8_t msg[] = "Hello Car!\r\n";
+	  HAL_UART_Transmit(&huart1, msg, strlen((char*)msg), 10);
+	  HAL_Delay(1000);
 
 
     /* USER CODE END WHILE */
@@ -183,6 +232,39 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -235,6 +317,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(HC05_EN_GPIO_Port, HC05_EN_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
@@ -248,12 +333,23 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : HC05_EN_Pin */
+  GPIO_InitStruct.Pin = HC05_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(HC05_EN_GPIO_Port, &GPIO_InitStruct);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-
+int __io_putchar(int ch)
+{
+  HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+  return ch;
+}
 /* USER CODE END 4 */
 
 /**
